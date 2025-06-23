@@ -4,10 +4,10 @@ import random
 from questions import QUESTIONS
 
 class GameSession:
-    def __init__(self, ctx, bot):
-        self.ctx = ctx
+    def __init__(self, interaction, bot):
+        self.interaction = interaction
         self.bot = bot
-        self.channel = ctx.channel
+        self.channel = interaction.channel
         self.players = []
         self.answers = {}  # {user_id: [answers]}
         self.current_question = 0
@@ -33,7 +33,7 @@ class GameSession:
             color=0x00ff00
         )
         
-        join_message = await self.channel.send(embed=embed)
+        join_message = await self.interaction.followup.send(embed=embed)
         await join_message.add_reaction("✅")
         
         # Wait for reactions for 15 seconds
@@ -54,7 +54,7 @@ class GameSession:
                     reaction, user = await self.bot.wait_for('reaction_add', timeout=remaining_time, check=check)
                     if user not in self.players and len(self.players) < 5:
                         self.players.append(user)
-                        await self.channel.send(f"✅ {user.display_name} joined the game! ({len(self.players)}/5)")
+                        await self.interaction.followup.send(f"✅ {user.display_name} joined the game! ({len(self.players)}/5)")
                 except asyncio.TimeoutError:
                     break
         
@@ -63,14 +63,14 @@ class GameSession:
         
         # Check if we have enough players
         if len(self.players) < 2:
-            await self.channel.send("❌ Not enough players joined! You need at least 2 players to start the game.")
+            await self.interaction.followup.send("❌ Not enough players joined! You need at least 2 players to start the game.")
             return False
         
         # Initialize answers dictionary
         for player in self.players:
             self.answers[player.id] = []
         
-        await self.channel.send(f"🎉 Game starting with {len(self.players)} players: {', '.join([p.display_name for p in self.players])}")
+        await self.interaction.followup.send(f"🎉 Game starting with {len(self.players)} players: {', '.join([p.display_name for p in self.players])}")
         await asyncio.sleep(2)
         return True
     
@@ -90,7 +90,7 @@ class GameSession:
             color=0x3498db
         )
         
-        question_message = await self.channel.send(embed=embed)
+        question_message = await self.interaction.followup.send(embed=embed)
         await question_message.add_reaction("👍")
         await question_message.add_reaction("👎")
         
@@ -130,11 +130,11 @@ class GameSession:
         if timeout_count > 0:
             summary_text += f", ⏰ {timeout_count} timed out"
         
-        await self.channel.send(summary_text)
+        await self.interaction.followup.send(summary_text)
     
     async def show_results(self):
         """Calculate and display compatibility results"""
-        await self.channel.send("🧮 Calculating compatibility scores...")
+        await self.interaction.followup.send("🧮 Calculating compatibility scores...")
         await asyncio.sleep(2)
         
         # Calculate compatibility between all pairs
@@ -193,7 +193,7 @@ class GameSession:
                 inline=True
             )
         
-        await self.channel.send(embed=embed)
+        await self.interaction.followup.send(embed=embed)
         
         # Show individual answer breakdown if requested
         breakdown_embed = discord.Embed(
@@ -219,7 +219,7 @@ class GameSession:
                 inline=True
             )
         
-        await self.channel.send(embed=breakdown_embed)
+        await self.interaction.followup.send(embed=breakdown_embed)
         
         # Thank you message
-        await self.channel.send("🎉 Thanks for playing! Use `!start` to play again!")
+        await self.interaction.followup.send("🎉 Thanks for playing! Use `/start` to play again!")
