@@ -3,6 +3,8 @@ from discord.ext import commands
 from discord import app_commands
 import os
 import asyncio
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from game_session import GameSession
 
 # Configure intents
@@ -16,6 +18,24 @@ bot = commands.Bot(command_prefix='!', intents=intents)
 
 # Dictionary to store active game sessions per channel
 active_sessions = {}
+
+
+class KeepAliveHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b'Bot is alive!')
+
+    def log_message(self, format, *args):
+        pass
+
+
+def run_keep_alive():
+    port = int(os.environ.get('PORT', 8080))
+    server = HTTPServer(('0.0.0.0', port), KeepAliveHandler)
+    print(f'Keep-alive server running on port {port}')
+    server.serve_forever()
+
 
 @bot.event
 async def on_ready():
@@ -32,12 +52,10 @@ async def start_game(interaction: discord.Interaction):
     """Start a new This or That compatibility game"""
     channel_id = interaction.channel.id
     
-    # Check if there's already an active session in this channel
     if channel_id in active_sessions:
         await interaction.response.send_message("❌ There's already an active game in this channel! Please wait for it to finish.")
         return
     
-    # Create new game session
     session = GameSession(interaction, bot)
     active_sessions[channel_id] = session
     
@@ -51,7 +69,6 @@ async def start_game(interaction: discord.Interaction):
         else:
             await interaction.followup.send("❌ An error occurred during the game. Please try again.")
     finally:
-        # Clean up the session
         if channel_id in active_sessions:
             del active_sessions[channel_id]
 
@@ -59,7 +76,7 @@ async def start_game(interaction: discord.Interaction):
 async def on_command_error(ctx, error):
     """Handle command errors"""
     if isinstance(error, commands.CommandNotFound):
-        return  # Ignore unknown commands
+        return
     else:
         print(f"Command error: {error}")
         await ctx.send("❌ An error occurred while processing your command.")
@@ -74,9 +91,12 @@ if __name__ == "__main__":
     token = os.environ.get('TOKEN')
     if not token:
         print("❌ Error: Discord bot token not found in environment variables!")
-        print("Please set the TOKEN environment variable in Replit secrets.")
+        print("Please set the TOKEN environment variable in Render environment settings.")
         exit(1)
-    
+
+    keep_alive_thread = threading.Thread(target=run_keep_alive, daemon=True)
+    keep_alive_thread.start()
+
     try:
         bot.run(token)
     except discord.LoginFailure:
