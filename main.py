@@ -1,10 +1,9 @@
 import discord
 from discord.ext import commands
-from discord import app_commands
 import os
 import asyncio
 import threading
-import time
+import aiohttp
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from game_session import GameSession
 
@@ -16,6 +15,8 @@ intents.members = True
 
 # Dictionary to store active game sessions per channel
 active_sessions = {}
+
+SELF_URL = os.environ.get('RENDER_URL', '')
 
 
 class KeepAliveHandler(BaseHTTPRequestHandler):
@@ -35,6 +36,22 @@ def run_keep_alive():
     server.serve_forever()
 
 
+async def self_ping_loop():
+    if not SELF_URL:
+        print('RENDER_URL not set — self-ping disabled.')
+        return
+    print(f'Self-ping active: pinging {SELF_URL} every 10 minutes.')
+    await asyncio.sleep(30)
+    async with aiohttp.ClientSession() as session:
+        while True:
+            try:
+                async with session.get(SELF_URL, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                    print(f'Self-ping OK ({resp.status})')
+            except Exception as e:
+                print(f'Self-ping failed: {e}')
+            await asyncio.sleep(600)
+
+
 def make_bot():
     bot = commands.Bot(command_prefix='!', intents=intents)
 
@@ -47,6 +64,7 @@ def make_bot():
             print(f"Synced {len(synced)} command(s)")
         except Exception as e:
             print(f"Failed to sync commands: {e}")
+        bot.loop.create_task(self_ping_loop())
 
     @bot.tree.command(name="start", description="Start a new This or That compatibility game")
     async def start_game(interaction: discord.Interaction):
@@ -124,7 +142,7 @@ if __name__ == "__main__":
     token = os.environ.get('TOKEN')
     if not token:
         print("❌ Error: Discord bot token not found in environment variables!")
-        print("Please set the TOKEN environment variable in Render environment settings.")
+        print("Please set the TOKEN environment variable in environment settings.")
         exit(1)
 
     keep_alive_thread = threading.Thread(target=run_keep_alive, daemon=True)
