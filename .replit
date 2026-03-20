@@ -25,3 +25,6 @@ args = "pip install discord.py && python main.py"
 
 [deployment]
 run = ["sh", "-c", "pip install discord.py && python main.py"]
+
+[agent]
+expertMode = true
