@@ -3,6 +3,7 @@ from discord.ext import commands
 import os
 import asyncio
 import threading
+import random
 import aiohttp
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from game_session import GameSession
@@ -16,7 +17,7 @@ intents.members = True
 # Dictionary to store active game sessions per channel
 active_sessions = {}
 
-SELF_URL = os.environ.get('RENDER_URL', '')
+PORT = int(os.environ.get('PORT', 8080))
 
 
 class KeepAliveHandler(BaseHTTPRequestHandler):
@@ -30,22 +31,20 @@ class KeepAliveHandler(BaseHTTPRequestHandler):
 
 
 def run_keep_alive():
-    port = int(os.environ.get('PORT', 8080))
-    server = HTTPServer(('0.0.0.0', port), KeepAliveHandler)
-    print(f'Keep-alive server running on port {port}')
+    server = HTTPServer(('0.0.0.0', PORT), KeepAliveHandler)
+    print(f'Keep-alive server running on port {PORT}')
     server.serve_forever()
 
 
 async def self_ping_loop():
-    if not SELF_URL:
-        print('RENDER_URL not set — self-ping disabled.')
-        return
-    print(f'Self-ping active: pinging {SELF_URL} every 10 minutes.')
-    await asyncio.sleep(30)
+    """Ping own HTTP server every 10 minutes to prevent Render from sleeping."""
+    await asyncio.sleep(60)
+    url = os.environ.get('RENDER_URL') or f'http://localhost:{PORT}'
+    print(f'Self-ping active: pinging {url} every 10 minutes.')
     async with aiohttp.ClientSession() as session:
         while True:
             try:
-                async with session.get(SELF_URL, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
                     print(f'Self-ping OK ({resp.status})')
             except Exception as e:
                 print(f'Self-ping failed: {e}')
@@ -58,12 +57,12 @@ def make_bot():
     @bot.event
     async def on_ready():
         print(f'{bot.user} has connected to Discord!')
-        print(f'Bot is ready to run "This or That" compatibility games!')
+        print('Bot is ready to run "This or That" compatibility games!')
         try:
             synced = await bot.tree.sync()
-            print(f"Synced {len(synced)} command(s)")
+            print(f'Synced {len(synced)} command(s)')
         except Exception as e:
-            print(f"Failed to sync commands: {e}")
+            print(f'Failed to sync commands: {e}')
         bot.loop.create_task(self_ping_loop())
 
     @bot.tree.command(name="start", description="Start a new This or That compatibility game")
@@ -81,7 +80,7 @@ def make_bot():
             await interaction.response.defer()
             await session.start_game()
         except Exception as e:
-            print(f"Error in game session: {e}")
+            print(f'Error in game session: {e}')
             if not interaction.response.is_done():
                 await interaction.response.send_message("❌ An error occurred during the game. Please try again.")
             else:
@@ -94,40 +93,44 @@ def make_bot():
     async def on_command_error(ctx, error):
         if isinstance(error, commands.CommandNotFound):
             return
-        else:
-            print(f"Command error: {error}")
-            await ctx.send("❌ An error occurred while processing your command.")
+        print(f'Command error: {error}')
+        await ctx.send("❌ An error occurred while processing your command.")
 
     @bot.event
     async def on_error(event, *args, **kwargs):
-        print(f"Bot error in {event}: {args}")
+        print(f'Bot error in {event}: {args}')
 
     return bot
 
 
 async def run_bot_with_retry(token):
-    max_retries = 10
+    max_retries = 50
     base_delay = 30
 
-    for attempt in range(1, max_retries + 1):
+    # Random startup delay to avoid hitting rate limits when Render restarts
+    startup_delay = random.randint(5, 20)
+    print(f'Startup delay: {startup_delay}s (avoids rate limiting)...')
+    await asyncio.sleep(startup_delay)
+
+    attempt = 0
+    while True:
+        attempt += 1
         bot = make_bot()
         try:
-            print(f"Connecting to Discord... (attempt {attempt}/{max_retries})")
+            print(f'Connecting to Discord... (attempt {attempt})')
             await bot.start(token)
-            break
         except discord.LoginFailure:
-            print("❌ Error: Invalid Discord bot token!")
+            print('❌ Error: Invalid Discord bot token! Stopping.')
             break
         except Exception as e:
             error_str = str(e)
             if '429' in error_str or 'rate limit' in error_str.lower() or '1015' in error_str:
-                wait = base_delay * attempt
-                print(f"⚠️ Rate limited by Discord/Cloudflare (attempt {attempt}). Retrying in {wait}s...")
-                await asyncio.sleep(wait)
+                wait = min(base_delay * attempt, 300)
+                print(f'⚠️ Rate limited (attempt {attempt}). Retrying in {wait}s...')
             else:
                 wait = base_delay
-                print(f"⚠️ Connection error: {e}. Retrying in {wait}s...")
-                await asyncio.sleep(wait)
+                print(f'⚠️ Connection lost: {e}. Reconnecting in {wait}s...')
+            await asyncio.sleep(wait)
         finally:
             try:
                 if not bot.is_closed():
@@ -135,14 +138,11 @@ async def run_bot_with_retry(token):
             except Exception:
                 pass
 
-    print("❌ Could not connect to Discord after all retries.")
-
 
 if __name__ == "__main__":
     token = os.environ.get('TOKEN')
     if not token:
-        print("❌ Error: Discord bot token not found in environment variables!")
-        print("Please set the TOKEN environment variable in environment settings.")
+        print('❌ Error: TOKEN environment variable not set!')
         exit(1)
 
     keep_alive_thread = threading.Thread(target=run_keep_alive, daemon=True)
