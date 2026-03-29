@@ -2,7 +2,7 @@ services:
   - type: web
     name: this-or-that-buddy
     env: python
-    buildCommand: pip install discord.py
+    buildCommand: pip install discord.py aiohttp
     startCommand: python main.py
     envVars:
       - key: TOKEN
