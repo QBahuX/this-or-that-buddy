@@ -7,7 +7,8 @@ import random
 import aiohttp
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from game_session import GameSession
-
+import logging
+logging.basicConfig(level=logging.INFO)
 # Configure intents
 intents = discord.Intents.default()
 intents.message_content = True
