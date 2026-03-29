@@ -17,7 +17,7 @@ intents.members = True
 # Dictionary to store active game sessions per channel
 active_sessions = {}
 
-PORT = int(os.environ.get('PORT', 8080))
+PORT = int(os.environ.get('PORT', 10000))
 
 
 class KeepAliveHandler(BaseHTTPRequestHandler):
