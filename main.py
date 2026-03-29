@@ -108,7 +108,7 @@ async def run_bot_with_retry(token):
     base_delay = 30
 
     # Random startup delay to avoid hitting rate limits when Render restarts
-    startup_delay = random.randint(5, 20)
+    startup_delay = 0
     print(f'Startup delay: {startup_delay}s (avoids rate limiting)...')
     await asyncio.sleep(startup_delay)
 
