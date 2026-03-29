@@ -142,10 +142,15 @@ async def run_bot_with_retry(token):
 if __name__ == "__main__":
     token = os.environ.get('TOKEN')
     if not token:
-        print('❌ Error: TOKEN environment variable not set!')
+        print("❌ Token missing in Render Settings!")
         exit(1)
 
-    keep_alive_thread = threading.Thread(target=run_keep_alive, daemon=True)
-    keep_alive_thread.start()
+    # Threading setup
+    from threading import Thread
+    daemon = Thread(target=run_keep_alive, daemon=True)
+    daemon.start()
 
-    asyncio.run(run_bot_with_retry(token))
+    # Discord bot startup
+    print("🚀 Bot starting...")
+    bot = make_bot()
+    bot.run(token)
